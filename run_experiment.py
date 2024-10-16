@@ -146,7 +146,7 @@ def run_experiment(
         set_frequency(freq_mhz)
         # open workloads config file
         workloads_df = pd.read_csv(workloads_config, sep='\t')
-        print workloads_df
+        print(workloads_df)
         # change home dir so it works on other platforms
         original_home_dir = '/home/odroid'
         home_dir = os.path.expanduser('~')
@@ -161,8 +161,8 @@ def run_experiment(
             f.write(program_out_text)
         f.closed
         for i in range(0, len(workloads_df.index)):
-            print 'Working on: '+ workloads_df['Name'].iloc[i]
-            print 'Switching directory to: '+workloads_df['Directory'].iloc[i]
+            print('Working on: '+ workloads_df['Name'].iloc[i])
+            print('Switching directory to: '+workloads_df['Directory'].iloc[i])
             owd = os.getcwd()
             pre_sleep_shell_text = None
             post_sleep_shell_text = None
@@ -347,7 +347,7 @@ if __name__ == "__main__":
         sys.exit()
     if args.fan_pwm:
         set_fan_pwm(args.platform,args.fan_pwm)
-    freq = 1000
+    freq = '1000'
     if args.freq_mhz:
         freq = args.freq_mhz
     core_mask = '0,1,2,3'
@@ -409,7 +409,7 @@ if __name__ == "__main__":
                                     lines[i]+=','+pmc
                 f.closed
                 for line in lines:
-                    print line
+                    print(line)
                 with open('temp-events.config', 'w') as f:
                     f.write('\n'.join(lines))
                 f.closed
@@ -420,7 +420,7 @@ if __name__ == "__main__":
                 pmc_subdir_name = 'pmc-run-{0:0>2}'.format(pmc_i)
                 for pmc in pmc_sets[pmc_i]:
                     pmc_subdir_name += '-'+pmc
-                print pmc_subdir_name
+                print(pmc_subdir_name)
                 run_experiment(
                         experiment_directory,
                         freq,
