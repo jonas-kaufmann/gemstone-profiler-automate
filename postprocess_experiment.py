@@ -87,8 +87,8 @@ def postprocess_experiment(experiment_dir, output_filepath,temperature_file=None
     # get core mask:
     # TODO improve this
     core_mask = ''
-    if os.path.isfile(os.path.join(experiment_dir, run_experiment.FILENAME_CORE_MASK_OUT)):
-        with open(os.path.join(experiment_dir, run_experiment.FILENAME_CORE_MASK_OUT),'r') as f:
+    if os.path.isfile(os.path.join(experiment_dir, '../', run_experiment.FILENAME_CORE_MASK_OUT)):
+        with open(os.path.join(experiment_dir, '..', run_experiment.FILENAME_CORE_MASK_OUT),'r') as f:
             core_mask = f.read().strip()
         f.closed
     else:
