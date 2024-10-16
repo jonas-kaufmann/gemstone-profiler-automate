@@ -143,7 +143,7 @@ def run_experiment(
         loggingThread = ContinuousLogging(0, experiment_directory, sample_time_us)
         loggingThread.start()
         #os.system('bin/pmc-get-header > '+experiment_directory+'/pmc-log.out')
-        set_frequency(freq_mhz)
+        # set_frequency(freq_mhz)
         # open workloads config file
         workloads_df = pd.read_csv(workloads_config, sep='\t')
         print(workloads_df)
@@ -444,4 +444,4 @@ if __name__ == "__main__":
         run_experiment(experiment_directory,freq, core_mask, args.workloads_config, command_args_text, iterations=args.iterations,pre_sleep=args.pre_sleep,post_sleep=args.post_sleep,workload_timeout=args.workload_timeout)
     print("END OF SCRIPT ('experiment directory: "+experiment_directory+")")
     print("Just tidying up now:")
-    reset_gov_and_fan()
+    # reset_gov_and_fan()
