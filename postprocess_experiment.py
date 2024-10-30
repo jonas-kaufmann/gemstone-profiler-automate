@@ -3,10 +3,12 @@
 # Matthew J. Walker
 # Created: 5 June 2017
 
-import sys
 import os
 import run_experiment
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
 import pandas as pd
+import numpy as np
 
 REG_MAX = 2**32
 
@@ -22,10 +24,8 @@ def mean_temperature_interpolated(milli_list, t_list):
     import numpy as np
     temp_for_each_milli = []
     milli_list_f = [float(x) for x in milli_list]
-    print('milli list: '+str(milli_list))
-    print('temperature list: '+str(milli_list))
-    for i in range(milli_list[0], milli_list[-1], 1):
-        temp_for_each_milli.append(np.interp(float(i),milli_list_f,t_list))
+    eval_at = [float(i) for i in range(milli_list[0], milli_list[-1], 1)]
+    temp_for_each_milli = np.interp(eval_at,milli_list_f,t_list)
     return np.mean(temp_for_each_milli)
 
 # This method derives basic stats from post-processed data
@@ -64,7 +64,6 @@ def get_pmc_diff_from_list(pmc_vals):
         if pmc_vals[i] < pmc_vals[i-1]:
             # overflow!
             overflows+=1;
-    print('Overflows: '+str(overflows))
     if not overflows:
         return pmc_vals[-1] - pmc_vals[0]
     else:
@@ -81,8 +80,6 @@ def postprocess_experiment(experiment_dir, output_filepath,temperature_file=None
         os.path.join(experiment_dir, run_experiment.FILENAME_PMC_CONTINUOUS_LOG),
         sep='\t'
         )
-    print(pmc_events_log_df)
-    print(pmc_continuous_log_df)
 
     # get core mask:
     # TODO improve this
@@ -94,7 +91,6 @@ def postprocess_experiment(experiment_dir, output_filepath,temperature_file=None
     else:
         with open(os.path.join(experiment_dir, run_experiment.FILENAME_ARGS), 'r') as f:
             text = f.read()
-            print(text)
             if text.find('0,1,2,3') > -1:
                 core_mask = '0,1,2,3'
             elif text.find('4,5,6,7') > -1:
@@ -105,13 +101,13 @@ def postprocess_experiment(experiment_dir, output_filepath,temperature_file=None
     # count number of overflows 
     # need the workload names!
     workloads_temp_df = pmc_events_log_df[pmc_events_log_df['label'].str.contains(" start")]
-    print(workloads_temp_df)
     # identify PMC columns
     all_cols = [i for i in pmc_events_log_df.columns.values]
     pmc_cols = [i for i in pmc_events_log_df.columns.values if i.find('cntr') > -1 or i.find('count') > -1]
     new_df_cols = ['workload name', 'core mask', 'duration (s)', 'no. samples', \
             'start time (ms)', 'end time (ms)', 'start date', 'end date']
     freq_cols = [i for i in pmc_events_log_df.columns.values if i.find('Freq (MHz)') > -1]
+    power_cols = [i for i in pmc_events_log_df.columns.values if i.find('Power') > -1]
     temperature_cols = [x for x in pmc_events_log_df.columns.values \
             if x.find('Temperature') > -1 or x.find('temperature') > -1]
     for freq in freq_cols:
@@ -121,7 +117,6 @@ def postprocess_experiment(experiment_dir, output_filepath,temperature_file=None
     for pmc in pmc_cols:
         new_df_cols.append(pmc+' rate')
     for temperature in temperature_cols:
-        new_df_cols.append(temperature+' mean (no interp)')
         new_df_cols.append(temperature+' mean (interp)')
     #if temperature_file:
         #new_df_cols.append('Ambient Temperature')
@@ -132,11 +127,9 @@ def postprocess_experiment(experiment_dir, output_filepath,temperature_file=None
     time_series_df = pd.DataFrame(columns=['temp'])
     for i in range(0, len(workloads_temp_df.index)):
         current_workload = workloads_temp_df['label'].iloc[i].split()[0]
-        print ('\nAnalaysing workload: '+current_workload)
         # get the start time stamp and end time stamp (milli)
         start_row = pmc_events_log_df[pmc_events_log_df['label'] == current_workload+' start']
         end_row = pmc_events_log_df[pmc_events_log_df['label'] == current_workload+' end']
-        print ("Start row: "+str(start_row))
         if len(end_row) < 1:
             print("Error: could not find end row. Skipping this workload")
             print("Press enter to continue")
@@ -150,33 +143,24 @@ def postprocess_experiment(experiment_dir, output_filepath,temperature_file=None
         elif len(start_row) > 1:
             print("Error multiple start rows for same workload. Skipping")
             print("Press enter to continue")
+            input()
             continue
-        print ("debug: "+str(start_row['milliseconds']))
         start_time = int(start_row['milliseconds'])
         end_time = int(end_row['milliseconds'])
         delta_time = float(end_time - start_time)/1000.0
-        print ('Delta time (s): ' + str(delta_time))
         # now use the continuous log to get the in between times
-        #print (pmc_continuous_log_df['milliseconds'].dtype)
         continuous_df = pmc_continuous_log_df[pmc_continuous_log_df['milliseconds'] > start_time]
         continuous_df = continuous_df[continuous_df['milliseconds'] < end_time]
-        print ('Start time: '+str(start_time))
-        for j in range(0, len(continuous_df.index)):
-            print ('    '+str(continuous_df['milliseconds'].iloc[j]))
-        print ('End time: '+str(end_time))
         # now get pmcs
         num_samples = 0
         row_dict = {}
         for pmc in pmc_cols:
-            print('PMC: '+pmc)
             pmc_vals = []
             pmc_vals.append(int(start_row[pmc]))
             for j in range(0, len(continuous_df.index)):
                 pmc_vals.append(int(continuous_df[pmc].iloc[j]))
             pmc_vals.append(int(end_row[pmc]))
-            print('    PMC values: '+str(pmc_vals))
             pmc_diff = get_pmc_diff_from_list(pmc_vals)
-            print(pmc_diff)
             row_dict[pmc+' diff']=pmc_diff
             row_dict[pmc+' rate']=pmc_diff/delta_time
         num_samples = len(pmc_vals)
@@ -191,10 +175,21 @@ def postprocess_experiment(experiment_dir, output_filepath,temperature_file=None
                 milli_vals.append(int(continuous_df['milliseconds'].iloc[j]))
             t_vals.append(float(end_row[t_col]))
             milli_vals.append(int(end_row['milliseconds']))
-            mean_no_interp = np.mean(t_vals)
             mean_interp = mean_temperature_interpolated(milli_vals,t_vals)
-            row_dict[t_col+' mean (no interp)'] = mean_no_interp
             row_dict[t_col+' mean (interp)'] = mean_interp
+        # process power samples
+        for p_col in power_cols:
+            p_vals = []
+            milli_vals = []
+            p_vals.append(float(start_row[p_col]))
+            milli_vals.append(int(start_row['milliseconds']))
+            for j in range(0, len(continuous_df.index)):
+                p_vals.append(float(continuous_df[p_col].iloc[j]))
+                milli_vals.append(int(continuous_df['milliseconds'].iloc[j]))
+            p_vals.append(float(end_row[p_col]))
+            milli_vals.append(int(end_row['milliseconds']))
+            mean_interp = mean_temperature_interpolated(milli_vals,p_vals)
+            row_dict[p_col+' mean (interp)'] = mean_interp
         # process ambient temperature - incl. time series
         ambi_in_range = None
         if temperature_file:
@@ -207,7 +202,6 @@ def postprocess_experiment(experiment_dir, output_filepath,temperature_file=None
             if len(ambi_in_range_df.index) < 1:
                 raise NotImplementedError("Cannot yet deal with the situation " \
                         +"where there is no temperature value within the sample")
-            print(ambi_in_range_df)
             row_dict['Ambient Temperature mean (no interp)'] = np.mean(ambi_in_range_df['Ambient Temperature'])
             row_dict['Ambient Temperature mean (interp)'] = mean_temperature_interpolated( \
                     ambi_in_range_df['milliseconds'].tolist(), \
@@ -229,7 +223,6 @@ def postprocess_experiment(experiment_dir, output_filepath,temperature_file=None
                     raise ValueError("Frequency changes in middle of workload! ("+current_workload+")")
             row_dict[f] = first_freq
         new_df = new_df.append(row_dict, ignore_index=True)
-        print(row_dict)
         # now do time series stuff
         # working on splice (continuous_df) with start and end
         ambient_temp_col = []
@@ -291,7 +284,6 @@ def postprocess_experiment(experiment_dir, output_filepath,temperature_file=None
         
         #for pmc in pmc_cols:
         #    temp_t_series_df[pmc+' rate interp'] = temp_t_series_df
-    #print new_df
     new_df.to_csv(
         os.path.join(output_filepath), 
         sep='\t'
@@ -305,26 +297,26 @@ def consolidate_iterations(files_list):
     # This method takes the postprocessed iteration files,
     # goes through each workload in turn, comparing between
     # the iterations, and chooses one of them to include in
-    # the single end file. 
+    # the single end file.
     import pandas as pd
     iteration_dfs = [pd.read_csv(x,sep='\t') for x in files_list]
-    print(files_list)
     # check workloads and execution
     # go through workload by workload:
     # assumption: workloads should be identical in all dfs
     workloads = iteration_dfs[0]['workload name'].tolist()
-    combined_df = pd.DataFrame(columns=iteration_dfs[0].columns.values)
+    columns: list = iteration_dfs[0].columns.values.tolist()
+    mean_std_columns = ["duration mean [s]", "duration std [s]"]
+    columns.extend(mean_std_columns)
+    combined_df = pd.DataFrame(columns=columns)
     chosen_iteration_index_list = []
     for wl_i in range(0, len(workloads)):
-        print("\nFinding best sample for workload: "+workloads[wl_i])
         execution_times = [df['duration (s)'].iloc[wl_i] for df in iteration_dfs]
-        print("Execution times: "+str(execution_times))
         ordered_execution_times = sorted(execution_times)
         chosen_time = ordered_execution_times[len(execution_times)//2]
         chosen_index = execution_times.index(chosen_time)
-        print("Chosen time: "+str(execution_times[chosen_index])+" (index="+str(chosen_index)+')')
         df_row = iteration_dfs[chosen_index].iloc[wl_i]
-        print(df_row)
+        mean_std = pd.Series(data=[np.mean(execution_times), np.std(execution_times)], index=mean_std_columns)
+        df_row = df_row.append(mean_std)
         combined_df = combined_df.append(df_row, ignore_index=True)
         chosen_iteration_index_list.append(chosen_index)
     combined_df.insert(2, 'iteration index', chosen_iteration_index_list)
@@ -339,11 +331,8 @@ def combine_pmc_runs(pmc_files):
     is_df_created = False
     execution_times = []
     for pmc_i in range(0, len(pmc_files)):
-        print("Working on PMC file: "+pmc_files[pmc_i])
         pmc_filename = os.path.basename(pmc_files[pmc_i])
-        print("PMC filename: "+pmc_filename)
         pmc_dirname = os.path.basename(os.path.normpath(os.path.dirname(pmc_files[pmc_i])))
-        print("PMC dirname: "+pmc_dirname)
         if not is_df_created:
             combined_df = pd.read_csv(pmc_files[pmc_i],sep='\t')
             execution_times.append(combined_df['duration (s)'].tolist())
@@ -366,10 +355,8 @@ def combine_pmc_runs(pmc_files):
             print("Temp: "+temp_workloads)
             raise ValueError("Workloads are not the same!!!")
         # add to df
-        print("combined df:")
-        print(combined_df)
         combined_df = pd.concat([combined_df, temp_df[new_cntr_cols]], axis=1)
-    print("Analysing the S.D. between exeuction times between PMC runs:")
+    # print("Analysing the S.D. between exeuction times between PMC runs:")
     mean_list = []
     sd_list = []
     for wl_i in range(0, len(combined_df.index)):
@@ -382,17 +369,15 @@ def combine_pmc_runs(pmc_files):
         row_string += " mean: "+str(mean) + "  "
         accum = 0
         for run_i in range(0, len(execution_times)):
-            accum += (execution_times[run_i][wl_i] - mean) * (execution_times[run_i][wl_i] - mean)
+            accum += (execution_times[run_i][wl_i] - mean) ** 2
         variance = accum / len(execution_times)
         row_string += "var: "+str(variance)+ "  "
         sd = math.sqrt(variance)
         row_string += "SD:  "+str(sd)
         mean_list.append(mean)
         sd_list.append(sd)
-        print(row_string)
-    print(combined_df)
+        # print(row_string)
     workload_duration_col_index = (combined_df.columns.values).tolist().index('duration (s)')
-    combined_df.insert(workload_duration_col_index, 'duration SD (s)', sd_list)
     combined_df.insert(workload_duration_col_index, 'duration mean (s)', mean_list)
     return combined_df
 
@@ -413,7 +398,6 @@ def postprocess_new_sytle_experiments(experiment_top_dir,temperature_file=None):
                 break
         if not current_pmc_dir:
             raise IOError("Could not find directory for pmc-run-{0:0>2}".format(pmc_run_i))
-        print('Working on PMC run: '+str(current_pmc_dir)+'...')
         current_pmc_dir = os.path.join(experiment_top_dir, current_pmc_dir)
         iteration_dirs  = [x for x in os.listdir(current_pmc_dir)
              if ( os.path.isdir(os.path.join(current_pmc_dir, x)) \
@@ -428,7 +412,6 @@ def postprocess_new_sytle_experiments(experiment_top_dir,temperature_file=None):
             if not current_iter_dir:
                 raise IOError("Could not find directory for iteration-{0:0>2}".format(iter_i))
             current_iter_dir = os.path.join(current_pmc_dir, current_iter_dir)
-            print("Working on iteration: "+str(current_iter_dir))
             # first process each of the iterations, and then combine them
             iteration_postprocessed_filename = os.path.join(current_iter_dir, 'postprocessed.csv')
             postprocess_experiment(current_iter_dir, iteration_postprocessed_filename,temperature_file=temperature_file)
@@ -439,8 +422,6 @@ def postprocess_new_sytle_experiments(experiment_top_dir,temperature_file=None):
     combined_pmcs_df = combine_pmc_runs(pmc_files_to_combine)
     print(combined_pmcs_df)
     combined_pmcs_df.to_csv(os.path.join(experiment_top_dir, "consolidated-pmc-runs.csv"),sep='\t')
-           
-
 # Three stages:
 # 1) post processing (i.e. convert raw output files to df (including calculating pmc rate)
 # 2) (for new experiments with multiple pmc runs and iterations) consolidating
